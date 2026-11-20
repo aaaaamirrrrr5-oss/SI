@@ -1,0 +1,41 @@
+const assert = require('node:assert/strict');
+const Security = require('../www/security.js');
+assert.equal(Security.assertBridgeTransport('https://example.com/wp'), 'https://example.com');
+assert.equal(Security.assertBridgeTransport('http://192.168.1.10:8080/site'), 'http://192.168.1.10:8080');
+assert.equal(Security.assertBridgeTransport('http://127.0.0.1:8080'), 'http://127.0.0.1:8080');
+assert.equal(Security.assertBridgeTransport('http://[::1]:8080'), 'http://[::1]:8080');
+assert.equal(Security.assertBridgeTransport('http://[fd00::1]:8080'), 'http://[fd00::1]:8080');
+assert.equal(Security.assertBridgeTransport('http://myhost.localhost'), 'http://myhost.localhost');
+assert.throws(() => Security.assertBridgeTransport('http://example.com'), /HTTPS/);
+assert.throws(() => Security.assertBridgeTransport('http://fd'), /HTTPS/);
+assert.throws(() => Security.assertBridgeTransport('ftp://example.com'), /HTTPS/);
+assert.throws(() => Security.assertBridgeTransport('https://user:secret@example.com'), /نام کاربری/);
+assert.equal(Security.privateOrLoopbackHost('172.20.1.2'), true);
+assert.equal(Security.privateOrLoopbackHost('8.8.8.8'), false);
+const fs = require('node:fs');
+const path = require('node:path');
+const headers = fs.readFileSync(path.join(__dirname, '../www/_headers'), 'utf8');
+const htaccess = fs.readFileSync(path.join(__dirname, '../www/.htaccess'), 'utf8');
+for (const h of ['Strict-Transport-Security', 'X-Frame-Options: DENY', "frame-ancestors 'none'", 'Permissions-Policy', 'Cross-Origin-Opener-Policy']) {
+  assert.ok(headers.includes(h), '_headers missing ' + h);
+  assert.ok(htaccess.includes(h.split(':')[0]), '.htaccess missing ' + h);
+}
+const appSrc = fs.readFileSync(path.join(__dirname, '../www/app.js'), 'utf8');
+assert.ok(/credentials: 'omit', cache: 'no-store', referrerPolicy: 'no-referrer'/.test(appSrc), 'bridge requests must omit cookies, cache and referrer');
+(async () => {
+  const nc = require('node:crypto');
+  const key = 'K'.repeat(40);
+  const h = await Security.signHeaders(key, 'post', '/si/v1/apply', '{"a":1}', 1700000000123, 'ab'.repeat(8));
+  const secret = nc.createHash('sha256').update(key).digest('hex');
+  const msg = ['POST', '/si/v1/apply', '1700000000', 'ab'.repeat(8), nc.createHash('sha256').update('{"a":1}').digest('hex')].join('\n');
+  assert.equal(h['X-SI-Sig'], nc.createHmac('sha256', secret).update(msg).digest('hex'));
+  assert.equal(h['X-SI-Time'], '1700000000');
+  assert.ok(!JSON.stringify(h).includes(key) && !('X-SI-Key' in h), 'the raw key must never be sent');
+  const a = await Security.signHeaders(key, 'GET', '/si/v1/ping', '');
+  const b = await Security.signHeaders(key, 'GET', '/si/v1/ping', '');
+  assert.notEqual(a['X-SI-Nonce'], b['X-SI-Nonce']);
+  assert.match(a['X-SI-Nonce'], /^[0-9a-f]{32}$/);
+  assert.match(a['X-SI-Sig'], /^[0-9a-f]{64}$/);
+  assert.ok(!/X-SI-Key/.test(appSrc), 'app must not send the raw key header');
+  console.log('bridge transport security tests OK');
+})().catch((e) => { console.error(e); process.exit(1); });

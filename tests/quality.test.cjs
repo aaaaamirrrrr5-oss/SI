@@ -1,0 +1,25 @@
+const assert = require('node:assert/strict');
+const Q = require('../www/quality.js');
+
+const html = `<!doctype html><html><head><title>قهوه تخصصی</title><script type="application/ld+json">{"@context":"https://schema.org","@type":"Product","name":"قهوه تخصصی","image":"https://example.test/a.jpg","description":"قهوه تازه","offers":{"@type":"Offer","price":"18.50","priceCurrency":"EUR"}}</script></head><body></body></html>`;
+const audit = Q.auditSchema(html, { title: 'قهوه تخصصی', price: 18.5 });
+assert.equal(audit.nodes, 2);
+assert.ok(audit.types.includes('Product'));
+assert.equal(audit.issues.length, 0);
+assert.equal(audit.ok, true);
+const bad = Q.auditSchema('<script type="application/ld+json">{broken</script>', {});
+assert.ok(bad.issues.some(x => x.code === 'invalid_jsonld'));
+const noSchema = Q.auditSchema('<html><body>Page</body></html>');
+assert.ok(noSchema.issues.some(x => x.code === 'schema_absent'));
+const mismatch = Q.auditSchema(html, { price: 19.99 });
+assert.ok(mismatch.issues.some(x => x.code === 'product_price_mismatch'));
+const report = Q.auditCrawlReport({ page_count: 3, pages: [{ status: 200 }, { status: 404 }, { status: 200 }], issues: [{ severity: 'high' }, { severity: 'low' }], duplicate_groups: { title: [[1,2]], meta_description: [], content_exact: [] } });
+assert.equal(report.pages, 3);
+assert.equal(report.bySeverity.high, 1);
+assert.equal(report.duplicateTitleGroups, 1);
+const evidence = Q.sourceEvidence({ title: 'Official documentation', url: 'https://docs.example.test/a', publisher: 'Example', publishedAt: '2026-11-01', verified: true, verificationMethod: 'primary-source-read', confidence: 0.95, claim: 'A grounded claim' });
+assert.equal(evidence.verified, true);
+assert.equal(Q.sourceEvidence({ url: 'https://docs.example.test/a?token=abc&ref=web' }).url, 'https://docs.example.test/a?ref=web');
+assert.equal(Q.sourceEvidence({ url: 'https://docs.example.test/a', verified: true }).verified, false);
+assert.throws(() => Q.sourceEvidence({ url: 'javascript:alert(1)' }), /URL معتبر/);
+console.log('quality/schema/source evidence tests OK');

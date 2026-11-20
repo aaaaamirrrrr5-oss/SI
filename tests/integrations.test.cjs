@@ -1,0 +1,31 @@
+const assert = require('node:assert/strict');
+const I = require('../www/integrations.js');
+(async () => {
+  let seen;
+  const fakeFetch = async (url, init) => {
+    seen = { url, init };
+    return { ok: true, status: 200, json: async () => ({ rows: [{ keys: ['coffee'], clicks: 12, impressions: 100, ctr: .12, position: 4.5 }] }) };
+  };
+  const gsc = await I.searchConsole({ accessToken: 'test-token', siteUrl: 'https://example.test/', days: 28, dimension: 'device' }, fakeFetch);
+  assert.equal(gsc.rows[0].clicks, 12);
+  assert.equal(gsc.dimension, 'device');
+  assert.deepEqual(gsc.rows[0].keys, ['coffee']);
+  assert.match(seen.url, /searchconsole.googleapis.com/);
+  assert.equal(seen.init.headers.Authorization, 'Bearer test-token');
+  let gaReq; const gaFetch = async (url, init) => { gaReq = { url, init }; return { ok: true, status: 200, json: async () => ({ rowCount: 1, dimensionHeaders: [{ name: 'country' }], metricHeaders: [{ name: 'sessions' }], rows: [{ dimensionValues: [{ value: 'DE' }], metricValues: [{ value: '25' }] }] }) }; };
+  const ga = await I.analytics({ accessToken: 'ga-token', propertyId: '123456', days: 7, dimension: 'country', metric: 'sessions' }, gaFetch);
+  assert.equal(ga.rows[0].metrics[0], '25');
+  assert.equal(gaReq.url, 'https://analyticsdata.googleapis.com/v1beta/properties/123456:runReport');
+  assert.match(gaReq.init.body, /country/);
+  assert.match(gaReq.init.body, /sessions/);
+  let psiUrl = '';
+  const psi = await I.pageSpeed({ url: 'https://example.test/', strategy: 'mobile' }, async (url) => { psiUrl = url; return { ok: true, status: 200, json: async () => ({ lighthouseResult: { categories: { performance: { score: .9 } }, audits: { 'largest-contentful-paint': { displayValue: '2.1 s', numericValue: 2100, score: .9 } } } }) }; });
+  assert.equal(psi.scores.performance, 90);
+  assert.match(psiUrl, /pagespeedonline/);
+  assert.equal(I.bingStatus().status, 'json-http-supported');
+  assert.equal(I.bingStatus().auth, 'api-key-or-oauth');
+  assert.match(I.bingStatus().message, /JSON\/HTTP/);
+  assert.doesNotMatch(I.bingStatus().message, /api\.svc/);
+  await assert.rejects(() => I.searchConsole({ siteUrl: 'https://example.test' }, fakeFetch), /توکن OAuth/);
+  console.log('integrations tests: OK');
+})().catch((e) => { console.error(e); process.exit(1); });

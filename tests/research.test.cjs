@@ -1,0 +1,18 @@
+const assert = require('assert');
+const R = require('../www/research.js');
+assert.strictEqual(R.isRequest('از منابع خارجی درباره آخرین تغییرات SEO GEO AEO تحقیق کن'), true);
+assert.strictEqual(R.isRequest('please do web research on local SEO'), true);
+assert.strictEqual(R.isCompareRequest('یافته‌ها را با وضعیت سایت من مقایسه کن'), true);
+assert.strictEqual(R.isRequest('عنوان سئو صفحه اصلی چیست؟'), false);
+const q = R.normalizeQuery('تحقیق درباره سئو و کلمات کلیدی کافی شاپ');
+assert.match(q, /SEO/i);
+assert.match(q, /keyword research/i);
+assert.match(q, /coffee shop/i);
+const summary = R.summarize({ query: 'SEO GEO', sources: ['Google News', 'Moz'], fetched_at: '2026-11-12T10:00:00Z', results: [{ title: 'AI Search update', source: 'Moz', published: '2026-11-11T10:00:00Z', relevance: 80 }] });
+assert.match(summary, /پژوهش وب انجام شد/);
+assert.match(summary, /AI Search update/);
+assert.match(summary, /امتیاز ارتباط/);
+const comparison = R.compare({ query: 'SEO', results: [{ title: 'AI Search', source: 'Moz' }] }, { scores: { seo: 75, ai: 60 }, pages: [], siteIssues: [] }, { site: { name: 'Demo' } }, null);
+assert.match(comparison, /AI Search/);
+assert.match(comparison, /SEO 75/);
+console.log('research tests OK');
